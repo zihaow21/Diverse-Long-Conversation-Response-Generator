@@ -28,17 +28,15 @@ Stores the parameters in check point.
 <br/>
 Parameters in it will be used in decoding. Also can be used to continue training.
 <br/>
-*Notice:
-    - Better remove previous ckpt since it takes up a lot of space.
-    - Will use previous ckpt in training. So if hyper parameters were changed, than you show probably remove all previous ckpt.
+#### Notice
+* Better remove previous ckpt since it takes up a lot of space.
+* Will use previous ckpt in training. So if hyper parameters were changed, than you show probably remove all previous ckpt.
 <br/> 
 
 ## How to Train
 1. Load Data
-    Put your training data in dialog_data_new/ and build dictionary. 
-<br/>
-    data_utils.py have some funcitons about tokenizing, one may help themselves if needed.
-<br/>
+    * Put your training data in dialog_data_new/ and build dictionary. 
+    * data_utils.py have some funcitons about tokenizing, one may help themselves if needed.
 2. Set Hyperparameters
     In translate.py:
     - Set FLAGS.decode and FLAGS.self-test to False.
@@ -50,5 +48,5 @@ Parameters in it will be used in decoding. Also can be used to continue training
 <br/> 
 
 ## How to Test
-- Set FLAGS.decode to True
-- Have to have some ckpt.
+* Set FLAGS.decode to True
+* Have to have some ckpt.
