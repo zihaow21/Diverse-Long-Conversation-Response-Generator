@@ -795,9 +795,9 @@ def embedding_attention_seq2seq(encoder_inputs,
       scope or "embedding_attention_seq2seq", dtype=dtype) as scope:
     dtype = scope.dtype
     # Encoder.
-    with tf.device('/gpu:0'):
+    with tf.device('/gpu:2'):
         single_cell_1 = rnn_cell.LSTMCell(embedding_size/2)
-    with tf.device('/gpu:1'):
+    with tf.device('/gpu:2'):
         single_cell_2 = rnn_cell.LSTMCell(embedding_size/2)
 
     encoder_fw_cell = rnn_cell.EmbeddingWrapper(single_cell_1, embedding_classes=num_encoder_symbols,
@@ -809,11 +809,11 @@ def embedding_attention_seq2seq(encoder_inputs,
     list_of_cell = []
     for layer in xrange(num_layers):
       if layer % 2 == 0:
-        with tf.device('/gpu:0'):
+        with tf.device('/gpu:2'):
           single_cell = tf.nn.rnn_cell.LSTMCell(embedding_size)
         list_of_cell.append(single_cell)
       else:
-        with tf.device('/gpu:1'):
+        with tf.device('/gpu:2'):
           single_cell = tf.nn.rnn_cell.LSTMCell(embedding_size)
         list_of_cell.append(single_cell)
 

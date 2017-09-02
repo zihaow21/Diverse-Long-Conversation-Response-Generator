@@ -36,12 +36,13 @@ tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
                           "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("batch_size", 64,
+tf.app.flags.DEFINE_integer("batch_size", 80,
                             "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("size", 640, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 4, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("en_vocab_size", 101414, "English vocabulary size.")
-tf.app.flags.DEFINE_integer("fr_vocab_size", 92577, "French vocabulary size.")
+tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("embedding_size", 512, "Length of the word vector.")
+tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("en_vocab_size", 30000, "English vocabulary size.")
+tf.app.flags.DEFINE_integer("fr_vocab_size", 30000, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "dialog_data_new", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "dialog_data_new", "Training directory.")
 tf.app.flags.DEFINE_string("ckpt_dir", "check_point", "Checkpoint directory.")
@@ -49,7 +50,7 @@ tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
                             "How many training steps to do per checkpoint.")
-tf.app.flags.DEFINE_boolean("decode", False,
+tf.app.flags.DEFINE_boolean("decode", True,
                             "Set to True for interactive decoding.")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
@@ -78,66 +79,66 @@ def choose_bucket(max_input_len):
             return bucket_id
 
 def read_data(source_path, target_path, max_size=None):
-    """Read data from source and target files and put into buckets.
+  """Read data from source and target files and put into buckets.
 
-    Args:
-        source_path: path to the files with token-ids for the source language.
-        target_path: path to the file with token-ids for the target language;
-            it must be aligned with the source file: n-th line contains the desired
-            output for n-th line from the source_path.
-        max_size: maximum number of lines to read, all other will be ignored;
-            if 0 or None, data files will be read completely (no limit).
+  Args:
+    source_path: path to the files with token-ids for the source language.
+    target_path: path to the file with token-ids for the target language;
+      it must be aligned with the source file: n-th line contains the desired
+      output for n-th line from the source_path.
+    max_size: maximum number of lines to read, all other will be ignored;
+      if 0 or None, data files will be read completely (no limit).
 
-    Returns:
-        data_set: a list of length len(_buckets); data_set[n] contains a list of
-            (source, target) pairs read from the provided data files that fit
-            into the n-th bucket, i.e., such that len(source) < _buckets[n][0] and
-            len(target) < _buckets[n][1]; source and target are lists of token-ids.
-    """
-    data_set = [[] for _ in _buckets]
-    with tf.gfile.GFile(source_path, mode="r") as source_file:
-        with tf.gfile.GFile(target_path, mode="r") as target_file:
-            source, target = source_file.readline(), target_file.readline()
-            counter = 0
-            while source and target and (not max_size or counter < max_size):
-                counter += 1
-                if counter % 100000 == 0:
-                    print("  reading data line %d" % counter)
-                    sys.stdout.flush()
-                source_ids = [int(x) for x in source.split()]
-                target_ids = [int(x) for x in target.split()]
-                target_ids.append(data_utils.EOS_ID)
-                for bucket_id, (source_size, target_size) in enumerate(buckets_pair_size):
-                    if len(source_ids) < source_size and len(target_ids) < target_size:
-                        data_set[bucket_id].append([source_ids, target_ids])
-                        break
-                source, target = source_file.readline(), target_file.readline()
-    return data_set
+  Returns:
+    data_set: a list of length len(_buckets); data_set[n] contains a list of
+      (source, target) pairs read from the provided data files that fit
+      into the n-th bucket, i.e., such that len(source) < _buckets[n][0] and
+      len(target) < _buckets[n][1]; source and target are lists of token-ids.
+  """
+  data_set = [[] for _ in _buckets]
+  with tf.gfile.GFile(source_path, mode="r") as source_file:
+    with tf.gfile.GFile(target_path, mode="r") as target_file:
+      source, target = source_file.readline(), target_file.readline()
+      counter = 0
+      while source and target and (not max_size or counter < max_size):
+        counter += 1
+        if counter % 100000 == 0:
+          print("  reading data line %d" % counter)
+          sys.stdout.flush()
+        source_ids = [int(x) for x in source.split()]
+        target_ids = [int(x) for x in target.split()]
+        target_ids.append(data_utils.EOS_ID)
+        for bucket_id, (source_size, target_size) in enumerate(buckets_pair_size):
+          if len(source_ids) < source_size and len(target_ids) < target_size:
+            data_set[bucket_id].append([source_ids, target_ids])
+            break
+        source, target = source_file.readline(), target_file.readline()
+  return data_set
 
 
 def create_model(session, forward_only):
-    """Create translation model and initialize or load parameters in session."""
-    dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
-    model = seq2seq_model.Seq2SeqModel(
-        FLAGS.en_vocab_size,
-        FLAGS.fr_vocab_size,
-        _buckets,
-        FLAGS.size,
-        FLAGS.num_layers,
-        FLAGS.max_gradient_norm,
-        FLAGS.batch_size,
-        FLAGS.learning_rate,
-        FLAGS.learning_rate_decay_factor,
-        forward_only=forward_only,
-        dtype=dtype)
-    ckpt = tf.train.get_checkpoint_state(FLAGS.ckpt_dir)
-    if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
-        print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
-        model.saver.restore(session, ckpt.model_checkpoint_path)
-    else:
-        print("Created model with fresh parameters.")
-        session.run(tf.initialize_all_variables())
-    return model
+  """Create translation model and initialize or load parameters in session."""
+  dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
+  model = seq2seq_model.Seq2SeqModel(
+      FLAGS.en_vocab_size,
+      FLAGS.fr_vocab_size,
+      _buckets,
+      FLAGS.size,
+      FLAGS.num_layers,
+      FLAGS.max_gradient_norm,
+      FLAGS.batch_size,
+      FLAGS.learning_rate,
+      FLAGS.learning_rate_decay_factor,
+      forward_only=forward_only,
+      dtype=dtype)
+  ckpt = tf.train.get_checkpoint_state(FLAGS.ckpt_dir)
+  if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+    print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+    model.saver.restore(session, ckpt.model_checkpoint_path)
+  else:
+    print("Created model with fresh parameters.")
+    session.run(tf.initialize_all_variables())
+  return model
 
 
 def train():
@@ -178,7 +179,7 @@ def train():
 
             # Get a batch and make a step.
             start_time = time.time()
-            encoder_inputs_ori, decoder_inputs_ori, decoder_outputs,\
+            encoder_inputs_ori, decoder_inputs_ori, \
                 max_encoder_input_len, max_decoder_input_len = model.get_batch(train_set, bucket_id)
 
             for segNum in range(int(max_decoder_input_len / 10)):
@@ -217,7 +218,7 @@ def train():
                   if len(dev_set[bucket_id]) == 0:
                     print("  eval: empty bucket %d" % (bucket_id))
                     continue
-                  encoder_inputs_ori, decoder_inputs_ori, decoder_outputs,\
+                  encoder_inputs_ori, decoder_inputs_ori, \
                   max_encoder_input_len, max_decoder_input_len = model.get_batch(train_set, bucket_id)
 
                   eval_loss = 0.0
@@ -261,12 +262,6 @@ def decode():
             response = model.generate_response(sess, src_i, _buckets, FLAGS.beam_num,
                                                FLAGS.samples_per_beam, FLAGS.segment_length)
             # Print out respond corresponding to outputs.
-            rst = " ".join([tf.compat.as_str(r_vocab_reversed[response_word]) for response_word in response])
-            rst.encode('utf-8')
-            fout = codecs.open("chinese.txt", 'a', 'utf-8')
-            fout.write(rst + '\n')
-            fout.close()
-            print(rst)
             print(" ".join([tf.compat.as_str(r_vocab_reversed[response_word]) for response_word in response]))
             print("> ", end="")
             sys.stdout.flush()
@@ -274,32 +269,32 @@ def decode():
             
 
 def self_test():
-    """Test the translation model."""
-    with tf.Session() as sess:
-        print("Self-test for neural translation model.")
-        # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
-        model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 2,
-                                           5.0, 32, 0.3, 0.99, num_samples=8)
-        sess.run(tf.initialize_all_variables())
+  """Test the translation model."""
+  with tf.Session() as sess:
+    print("Self-test for neural translation model.")
+    # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
+    model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 2,
+                                       5.0, 32, 0.3, 0.99, num_samples=8)
+    sess.run(tf.initialize_all_variables())
 
-        # Fake data set for both the (3, 3) and (6, 6) bucket.
-        data_set = ([([1, 1], [2, 2]), ([3, 3], [4]), ([5], [6])],
-                    [([1, 1, 1, 1, 1], [2, 2, 2, 2, 2]), ([3, 3, 3], [5, 6])])
-        for _ in xrange(5):  # Train the fake model for 5 steps.
-            bucket_id = random.choice([0, 1])
-            encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-              data_set, bucket_id)
-            model.step(sess, encoder_inputs, decoder_inputs, target_weights,
-                     bucket_id, False)
+    # Fake data set for both the (3, 3) and (6, 6) bucket.
+    data_set = ([([1, 1], [2, 2]), ([3, 3], [4]), ([5], [6])],
+                [([1, 1, 1, 1, 1], [2, 2, 2, 2, 2]), ([3, 3, 3], [5, 6])])
+    for _ in xrange(5):  # Train the fake model for 5 steps.
+      bucket_id = random.choice([0, 1])
+      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+          data_set, bucket_id)
+      model.step(sess, encoder_inputs, decoder_inputs, target_weights,
+                 bucket_id, False)
 
 
 def main(_):
-    if FLAGS.self_test:
-        self_test()
-    elif FLAGS.decode:
-        decode()
-    else:
-        train()
+  if FLAGS.self_test:
+    self_test()
+  elif FLAGS.decode:
+    decode()
+  else:
+    train()
 
 if __name__ == "__main__":
   tf.app.run()

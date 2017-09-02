@@ -148,7 +148,7 @@ class Seq2SeqModel(object):
               num_layers=num_layers,
               num_encoder_symbols=source_vocab_size,
               num_decoder_symbols=target_vocab_size,
-              embedding_size=size,
+              embedding_size=512,
               output_projection=output_projection,
               feed_previous=do_decode,
               dtype=dtype)
@@ -280,8 +280,7 @@ class Seq2SeqModel(object):
             bucket_id: Integer, which bucket to get the batch from.
 
         Returns:
-            encoder_inputs, decoder_inputs, decoder_outputs: corresponding to the
-                chosen batch of data.
+            encoder_inputs, decoder_inputs: corresponding to the chosen batch of data.
                 Each of these three lists are all of length batch_size.
             max_encoder_input_length: the length of the longest input in the chosen
                 batch. Will be used to decide which bucket to use in encode-decode
@@ -298,16 +297,12 @@ class Seq2SeqModel(object):
         # pad them if needed, reverse encoder inputs and add GO to decoder.
         for _ in xrange(self.batch_size):
             encoder_input, decoder_input = random.choice(data[bucket_id])
-            decoder_output = decoder_input + [data_utils.EOS_ID]
-            decoder_input = [data_utils.GO_ID] + decoder_input
             max_encoder_input_length = max(max_encoder_input_length, len(encoder_input))
             max_decoder_input_length = max(max_decoder_input_length, len(decoder_input))
             encoder_inputs.append(encoder_input)
             decoder_inputs.append(decoder_input)
-            decoder_outputs.append(decoder_output)
 
-        return encoder_inputs, decoder_inputs, decoder_outputs,\
-               max_encoder_input_length, max_decoder_input_length
+        return encoder_inputs, decoder_inputs, max_encoder_input_length, max_decoder_input_length
 
     def pad_pair(self, encoder_inputs_ori, decoder_inputs_ori, seg_num, seg_len, bucket_id, BOS):
         """
@@ -319,7 +314,7 @@ class Seq2SeqModel(object):
                 in which each word is represented by its own id.
             decoder_inputs_ori: A list of length batch_size. each element is an sentence
                 in which each word is represented by its own id.
-            seg_num: The number of the segment that is going through the decode process.
+            seg_num: The number(No.?) of the segment that is going through the decode process.
             seg_len: The length of the segment that is going through the decode process.
                 Equals to FLAGS.segment_length.
             bucket_id: The bucket to use in the encode-decode process.
@@ -337,8 +332,12 @@ class Seq2SeqModel(object):
         # Get a random batch of encoder and decoder inputs from data,
         # pad them if needed, reverse encoder inputs and add GO to decoder.
         for i in xrange(self.batch_size):
-            dst_i = decoder_inputs_ori[i]
-            src_i = encoder_inputs_ori[i] + dst_i[:min(len(dst_i), seg_num * seg_len)]
+            dst_i_ori = decoder_inputs_ori[i]  # the full sentence
+            src_i = encoder_inputs_ori[i] + dst_i_ori[:min(len(dst_i_ori), seg_num * seg_len)]
+            if len(dst_i_ori) > seg_num * seg_len:
+                dst_i = dst_i_ori[seg_num * seg_len: (seg_num + 1) * seg_len]  # a segment
+            else:
+                dst_i = [data_utils.EOS_ID]
 
             # Encoder inputs are padded and then reversed.
             encoder_pad = [data_utils.PAD_ID] * (encoder_size - len(src_i))
@@ -355,7 +354,7 @@ class Seq2SeqModel(object):
         # Now we create batch-major vectors from the data selected above.
         batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
 
-        # Batch encoder inputs are just re-indexed encoder_inputs. 这里好像就是给展开成1维的了？
+        # Batch encoder inputs are just re-indexed encoder_inputs. 有点像转置了？
         for length_idx in xrange(encoder_size):
             batch_encoder_inputs.append(
                 np.array([encoder_inputs[batch_idx][length_idx]
@@ -381,7 +380,7 @@ class Seq2SeqModel(object):
 
     def get_segment(self, session, encoder_inputs, decoder_inputs, buckets, beam_num, samples_per_beam, seg_len, BOS):
         """
-        Generate a segment using stochastic sampling with segment-by-segment reranking
+        Generate a segment using stochastic sampling with segment-by-segment re-ranking
         as described in "Generating High-Quality and Informative Conversation Responses
         with Sequence-to-Sequence Models".
         A beam sampling process.
