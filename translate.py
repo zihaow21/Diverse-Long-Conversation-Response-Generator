@@ -41,8 +41,8 @@ tf.app.flags.DEFINE_integer("batch_size", 80,
 tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("embedding_size", 512, "Length of the word vector.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("en_vocab_size", 30000, "English vocabulary size.")
-tf.app.flags.DEFINE_integer("fr_vocab_size", 30000, "French vocabulary size.")
+tf.app.flags.DEFINE_integer("q_vocab_size", 30000, "English vocabulary size.")
+tf.app.flags.DEFINE_integer("r_vocab_size", 30000, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "dialog_data_new", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "dialog_data_new", "Training directory.")
 tf.app.flags.DEFINE_string("ckpt_dir", "check_point", "Checkpoint directory.")
@@ -120,8 +120,8 @@ def create_model(session, forward_only):
   """Create translation model and initialize or load parameters in session."""
   dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
   model = seq2seq_model.Seq2SeqModel(
-      FLAGS.en_vocab_size,
-      FLAGS.fr_vocab_size,
+      FLAGS.q_vocab_size,
+      FLAGS.r_vocab_size,
       _buckets,
       FLAGS.size,
       FLAGS.num_layers,
@@ -145,7 +145,9 @@ def train():
     """Train a en->fr translation model using WMT data."""
     # Prepare WMT data.
     print("Preparing WMT data in %s" % FLAGS.data_dir)
-    en_train, fr_train, en_dev, fr_dev = data_utils.prepare_data(FLAGS.data_dir)
+    en_train, fr_train, en_dev, fr_dev = data_utils.prepare_data(FLAGS.data_dir,
+                                                                 FLAGS.q_vocab_size,
+                                                                 FLAGS.r_vocab_size)
 
     with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
     # Create model.

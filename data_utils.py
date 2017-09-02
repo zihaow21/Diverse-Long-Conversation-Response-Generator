@@ -107,7 +107,7 @@ def get_reverse_vocab_dict(dict_ori):
     return dict_r
 
 
-def build_vocab_dict(data_dir, train_data, data_type):
+def build_vocab_dict(data_dir, train_data, data_type, vocab_size):
     """
     Build vocabulary dictionary for Q / R training file.
     The vocab dict will be an ordered dictionary with
@@ -124,26 +124,32 @@ def build_vocab_dict(data_dir, train_data, data_type):
         dict_filename = os.path.join(data_dir, r_dict_name)
     if os.path.exists(dict_filename):
         return
-    vocab = {}  # key:word, val:(appearcnt, id)
+    vocab = {}  # key:word, val:id
     vocab[_PAD] = PAD_ID  # 0
     vocab[_GO] = GO_ID  # 1
     vocab[_EOS] = EOS_ID  # 2
     vocab[_UNK] = UNK_ID  # 3
-    word_id = len(_START_VOCAB)  # id
+    count = {}  # key:word, val:how many times this word appears
     fin = open(train_data, "r")
     for sentence in fin.readlines():
         for word in sentence.split():
             if word.encode('utf8') not in vocab.keys():
-                vocab[word.encode('utf8')] = word_id
-                word_id += 1
-    fin.close() 
+                count[word.encode('utf8')] = 1
+            else:
+                count[word.encode('utf8')] += 1
+    fin.close()
+    sorted_count = sorted(count.items(), key=lambda tup: tup[1], reverse=True)
+    word_id = 0
+    while word_id < vocab_size - len(_START_VOCAB):
+        vocab[sorted_count[word_id][0]] = word_id + len(_START_VOCAB)
+        word_id += 1
     fw = open(dict_filename, 'wb')
     pickle.dump(vocab, fw, pickle.HIGHEST_PROTOCOL)
     fw.close()
     return
 
 
-def prepare_data(data_dir):
+def prepare_data(data_dir, q_vocab_size, r_vocab_size):
     """Create vocabularies for Q & R. Tokenize data.
 
     Args:
@@ -163,8 +169,8 @@ def prepare_data(data_dir):
     r_test_raw_filename = os.path.join(data_dir, "r_test_new")
 
     # build dictionary
-    build_vocab_dict(data_dir, q_train_raw_filename, "q")
-    build_vocab_dict(data_dir, r_train_raw_filename, "r")
+    build_vocab_dict(data_dir, q_train_raw_filename, "q", q_vocab_size)
+    build_vocab_dict(data_dir, r_train_raw_filename, "r", r_vocab_size)
 
     # get vocabulary lists from q and r.
     q_dict, r_dict = get_vocab(data_dir)
